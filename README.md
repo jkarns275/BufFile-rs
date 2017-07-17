@@ -31,7 +31,7 @@ match now.elapsed() {
 
 // Write some data using a BufFile, time it
 let mut t1 = OpenOptions::new().read(true).write(true).truncate(true).create(true).open("test.tree").unwrap();
-let mut file = BufFile::with_capacity(128, t1).unwrap();
+let mut file = BufFile::with_capacity(8, t1).unwrap();
 
 let now = SystemTime::now();
 
