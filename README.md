@@ -1,6 +1,11 @@
 # BufFile-rs
 A Buffered File for rust that allows both reading and writing.
 
+```toml
+[dependencies]
+buf_file = "0.1.1"
+```
+
 ```rust
 use std::time::{ SystemTime };
 use std::io::{ Error, Seek, SeekFrom, Write, Read, BufWriter};
