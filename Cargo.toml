@@ -1,6 +1,6 @@
 [package]
 name = "buf_file"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Josh Karns <jkarns275@gmail.com>"]
 description = "A Buffered File that allows for both reading and writing"
 license = "MIT"
