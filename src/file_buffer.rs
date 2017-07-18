@@ -1,4 +1,4 @@
-use std::io::{ Error, Seek, SeekFrom, Write, Read };
+use std::io::{ Error, ErrorKind, Seek, SeekFrom, Write, Read };
 use std::collections::HashMap;
 use std::cmp;
 
@@ -27,7 +27,19 @@ impl Slab {
     pub fn new<R: Read + Seek + ?Sized>(loc: u64, reader: &mut R) -> Result<Slab, Error> {
         reader.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
-        reader.read(&mut dat[0..])?;
+        // It isn't safe to use read_exact, since the file may end early, so we loop until
+        // the slice is full, or until a length of zero is returned (EOF)
+        {
+            let mut dat = &mut dat[..];
+            while !dat.is_empty() {
+                match reader.read(dat) {
+                    Ok(0) => break,
+                    Ok(n) => { let tmp = dat; dat = &mut tmp[n..]; }
+                    Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+                    Err(e) => return Err(e),
+                }
+            }
+        }
         Ok(Slab {
             dat: dat,
             start: loc,
