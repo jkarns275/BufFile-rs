@@ -1,4 +1,3 @@
-use std::cmp::{ Ord, Ordering };
 use std::fs::File;
 use std::io::{ Error, Seek, SeekFrom, Write, Read };
 use std::collections::HashMap;
@@ -63,7 +62,7 @@ pub struct BufFile {
 
 impl BufFile {
     /// Creates a new BufFile.
-    pub fn new(mut file: File) -> Result<BufFile, Error> {
+    pub fn new(file: File) -> Result<BufFile, Error> {
         Self::with_capacity(DEFAULT_NUM_SLABS, file)
     }
 
@@ -152,7 +151,7 @@ impl BufFile {
                     self.dat[min].write(&mut self.file)?;
 
                     // Move the cursor back to where it was
-                    self.file.seek(SeekFrom::Start(self.cursor));
+                    self.file.seek(SeekFrom::Start(self.cursor))?;
 
                     // Remove the old slab from the map
                     self.map.remove(&self.dat[min].start);
@@ -195,7 +194,7 @@ impl Read for BufFile {
             {
                 // Since we're indexing, only use the lower bits n as index.
                 let masked = (self.cursor & SLAB_MASK) as usize;
-                let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + buf.len()];
+                let slice = &mut self.dat[index].dat[masked as usize .. masked as usize + buf.len()];
                 buf.clone_from_slice(slice);
             }
 
@@ -218,7 +217,7 @@ impl Read for BufFile {
             // For each slab we have to go through
             for _ in 0..slabs {
                 // How many bytes to we have to read this iteration? Either the rest of the data or the rest of a slab
-                let mut to_read = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, buf.len() - bytes_read);
+                let to_read = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, buf.len() - bytes_read);
                 // if cursor is a multiple of SLAB_SIZE then cursor & slab_mask will be 0
 
                 // Which slab to read from
@@ -238,7 +237,7 @@ impl Read for BufFile {
                 self.dat[index].uses += 1;
                 {
                     let masked = (self.cursor & SLAB_MASK) as usize;
-                    let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_read];
+                    let slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_read];
                     let mut target = &mut buf[bytes_read .. bytes_read + to_read];
                     target.clone_from_slice(slice);
                 }
@@ -299,7 +298,7 @@ impl Write for BufFile {
             // For each slab we have to go through
             for _ in 0..slabs {
                 // How many bytes to we have to read this iteration? Either the rest of the data or the rest of a slab
-                let mut to_write = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, buf.len() - bytes_written);
+                let to_write = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, buf.len() - bytes_written);
                 // if cursor is a multiple of SLAB_SIZE then cursor & slab_mask will be 0
 
                 // Which slab to read from
@@ -320,7 +319,7 @@ impl Write for BufFile {
                 {
                     let masked = (self.cursor & SLAB_MASK) as usize;
                     let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_write];
-                    let mut target = &buf[bytes_written .. bytes_written + to_write];
+                    let target = &buf[bytes_written .. bytes_written + to_write];
                     slice.clone_from_slice(target);
                 }
                 self.cursor += to_write as u64;
@@ -391,6 +390,7 @@ impl Seek for BufFile {
 
 impl Drop for BufFile {
      fn drop(&mut self) {
-         self.flush();
+         // Don't panic in drop, so silently ignore any errors.
+         let _ = self.flush();
      }
 }
