@@ -21,7 +21,8 @@ pub struct Slab {
     /// First byte in the file that is contained in this slab
     start: u64,
     /// Number of times this slab has been accessed.
-    uses: u64
+    uses: u64,
+    dirty: bool
 }
 
 impl Slab {
@@ -34,14 +35,17 @@ impl Slab {
         Ok(Slab {
             dat: dat,
             start: loc,
-            uses: 0
+            uses: 0,
+            dirty: false
         })
     }
 
     /// Write the slab to disk
-    pub fn write<F: Seek + Write>(&self, file: &mut F) -> Result<(), Error> {
+    pub fn write<F: Seek + Write>(&mut self, file: &mut F) -> Result<(), Error> {
+        if !self.dirty { return Ok(()) }
         file.seek(SeekFrom::Start(self.start))?;
         file.write_all(&self.dat[0..])?;
+        self.dirty = false;
         Ok(())
     }
 }
@@ -223,6 +227,7 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
 
             // We're using this slab, so increment its use count
             self.dat[index].uses += 1;
+            self.dat[index].dirty = true;
             {
                 // Since we're indexing, only use the lower bits n as index.
                 let masked = (self.cursor & SLAB_MASK) as usize;
@@ -267,6 +272,7 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
                 };
                 // We're using the slab so increment the use count
                 self.dat[index].uses += 1;
+                self.dat[index].dirty = true;
                 {
                     let masked = (self.cursor & SLAB_MASK) as usize;
                     let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_read];
@@ -363,7 +369,7 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
     }
 
     fn flush(&mut self) -> Result<(), Error> {
-        for slab in self.dat.iter() {
+        for slab in self.dat.iter_mut() {
             slab.write(&mut self.file)?;
         }
         Ok(())
