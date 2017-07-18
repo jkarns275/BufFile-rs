@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::{ Error, Seek, SeekFrom, Write, Read };
 use std::collections::HashMap;
 #[allow(unused_imports)]
-use raw_serde::*;
 use std::cmp;
 
 /// Slab size MUST be a power of 2!
@@ -29,9 +28,9 @@ impl Slab {
     /// Creates a new slab, drawing it's data from the given file at the given location
     /// Location should be at the beginning of a slab (e.g. a muitiple of SLAB_SIZE)
     pub fn new(loc: u64, file: &mut File) -> Result<Slab, Error> {
-        check!(file.seek(SeekFrom::Start(loc)));
+        file.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
-        check!(file.read(&mut dat[0..]));
+        file.read(&mut dat[0..])?;
         Ok(Slab {
             dat: dat,
             start: loc,
@@ -41,8 +40,8 @@ impl Slab {
 
     /// Write the slab to disk
     pub fn write(&self, file: &mut File) -> Result<(), Error> {
-        check!(file.seek(SeekFrom::Start(self.start)));
-        check!(file.write_all(&self.dat[0..]));
+        file.seek(SeekFrom::Start(self.start))?;
+        file.write_all(&self.dat[0..])?;
         Ok(())
     }
 }
@@ -72,17 +71,16 @@ impl BufFile {
     /// Creates a new BufFile with the specified number of slabs.
     pub fn with_capacity(slabs: usize, mut file: File) -> Result<BufFile, Error> {
         // Find the end of the file, in case the file isnt empty.
-        let end;
-        check!(file.seek(SeekFrom::End(0)), end);
+        let end = file.seek(SeekFrom::End(0))?;
 
         // Move the cursor back to the start of the file.
-        check!(file.seek(SeekFrom::Start(0)));
+        file.seek(SeekFrom::Start(0))?;
         Ok(BufFile {
-            slabs: slabs,  // Maximum of 32 slabs
+            slabs: slabs,   // Number of slabs
             dat: vec![],
             map: HashMap::new(),
             file,
-            cursor: 0,  // Since the cursor is at the start of the file
+            cursor: 0,      // Since the cursor is at the start of the file
             end
         })
     }
@@ -115,7 +113,7 @@ impl BufFile {
         if len < start as usize + SLAB_SIZE && len < loc as usize {
             let i = vec![0; SLAB_SIZE];
             let dif = len & SLAB_MASK as usize;
-            check!(self.file.write_all(&i[0..SLAB_SIZE - dif]));
+            self.file.write_all(&i[0..SLAB_SIZE - dif])?;
             self.end = loc + 1;
         }
         // If we're not at the maximum number of slabs, make a new one,
@@ -152,7 +150,7 @@ impl BufFile {
             match Slab::new(start, &mut self.file) {
                 Ok(x) => {
                     // Write the old slab to disk
-                    check!(self.dat[min].write(&mut self.file));
+                    self.dat[min].write(&mut self.file)?;
 
                     // Move the cursor back to where it was
                     self.file.seek(SeekFrom::Start(self.cursor));
@@ -336,7 +334,7 @@ impl Write for BufFile {
 
     fn flush(&mut self) -> Result<(), Error> {
         for slab in self.dat.iter() {
-            check!(slab.write(&mut self.file))
+            slab.write(&mut self.file)?;
         }
         Ok(())
     }
