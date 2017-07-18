@@ -4,9 +4,9 @@ use std::cmp;
 
 /// Slab size MUST be a power of 2!
 const SLAB_SIZE: usize = 1024*1024; // 1 Megabyte
-/// Used to turn a file index into an array index (since SLAB_SIZE is a power of two,
+/// Used to turn a file index into an array index (since `SLAB_SIZE` is a power of two,
 /// subtracting one from it will yield all ones, and anding it with a number will
-/// yield only the lowest n bits, where SLAB_SIZE = 2^n
+/// yield only the lowest n bits, where `SLAB_SIZE` = 2^n
 const SLAB_MASK: u64 = SLAB_SIZE as u64 - 1;
 
 const DEFAULT_NUM_SLABS: usize = 16;
@@ -88,7 +88,7 @@ impl<F: Read + Write + Seek> BufFile<F> {
     fn find_slab(&self, loc: u64) -> Option<usize> {
         let start = (loc | SLAB_MASK) ^ SLAB_MASK;
         if self.map.contains_key(&start) {
-            let x = self.map[&start].clone();
+            let x = self.map[&start];
             Some(x)
         } else {
             None
@@ -101,7 +101,7 @@ impl<F: Read + Write + Seek> BufFile<F> {
     fn add_slab(&mut self, loc: u64) -> Result<usize, Error> {
         let start = (loc | SLAB_MASK) ^ SLAB_MASK;
         if self.map.contains_key(&start) {
-            return Ok(self.map[&start].clone());
+            return Ok(self.map[&start]);
         }
         // Add up to 2048 bytes if the file is not long enough for this incoming location
         let len = self.end as usize;
@@ -330,7 +330,7 @@ impl<F: Read + Write + Seek> Write for BufFile<F> {
     }
 
     fn flush(&mut self) -> Result<(), Error> {
-        for slab in self.dat.iter() {
+        for slab in &self.dat {
             slab.write(&mut self.file)?;
         }
         Ok(())
