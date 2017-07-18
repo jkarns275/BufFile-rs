@@ -1,6 +1,9 @@
 # BufFile-rs
 A Buffered File for rust that allows both reading and writing.
 
+By default, each "hotspot" (referred to as slab in the code) is 512kb in size,
+this can be changed quite easily by moving file_buffer.rs into your rust project,
+rather than using the crate.
 # Example Usage
 Cargo.toml
 ```toml
@@ -61,4 +64,3 @@ match now.elapsed() {
 // time to write 128 megabytes with BufFile: 0.1970247
 // 649.6647374669268 mb / s WRITE
 ```
-
