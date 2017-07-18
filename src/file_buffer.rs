@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::cmp;
 
 /// Slab size MUST be a power of 2!
-const SLAB_SIZE: usize = 1024*512; // 1 Megabyte
+const SLAB_SIZE: usize = 1024*512; // Change this number to change the SLAB_SIZE (currently @ 512kb)
+
 /// Used to turn a file index into an array index (since SLAB_SIZE is a power of two,
 /// subtracting one from it will yield all ones, and anding it with a number will
 /// yield only the lowest n bits, where SLAB_SIZE = 2^n
@@ -12,19 +13,20 @@ const SLAB_MASK: u64 = SLAB_SIZE as u64 - 1;
 const DEFAULT_NUM_SLABS: usize = 16;
 
 /// A struct representing a section of a file
-pub struct Slab {
+struct Slab {
     /// The data
     pub dat: Vec<u8>,
     /// First byte in the file that is contained in this slab
     start: u64,
     /// Number of times this slab has been accessed.
     uses: u64,
+    /// Has the slab been written to, and not written to disk?
     dirty: bool
 }
 
 impl Slab {
     /// Creates a new slab, drawing it's data from the given file at the given location
-    /// Location should be at the beginning of a slab (e.g. a muitiple of SLAB_SIZE)
+    /// Location should be at the beginning of a slab (e.g. a muitiple of `SLAB_SIZE`)
     pub fn new<F: Seek + Read + Write>(loc: u64, file: &mut F) -> Result<Slab, Error> {
         file.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
@@ -137,7 +139,7 @@ impl<F: Write + Read + Seek> BufFile<F> {
         if self.map.contains_key(&start) {
             return Ok(self.map[&start].clone());
         }
-        // Add up to 2048 bytes if the file is not long enough for this incoming location
+        // Add up to SLAB_SIZE bytes if the file is not long enough for this incoming location
         let len = self.end as usize;
         // The end if the file is not as long as it needs to be, write some dummy data (0's) to extend it
         // This behavior will allow some strange behavior through, but it shouldnt't really be harmful
@@ -424,6 +426,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
 }
 
 impl<F: Read + Write + Seek> Drop for BufFile<F> {
+    /// Write all of the slabs to disk before closing the file.
      fn drop(&mut self) {
          let _ = self.flush();
      }
