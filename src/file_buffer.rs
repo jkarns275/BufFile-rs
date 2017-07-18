@@ -38,12 +38,15 @@ impl Slab {
             dat: dat,
             start: loc,
             uses: 0,
-            dirty: true,
+            dirty: false,
         })
     }
 
     /// Write the slab to disk
     pub fn write<W: Write + Seek + ?Sized>(&mut self, writer: &mut W) -> Result<(), Error> {
+        if ! self.dirty {
+            return Ok(())
+        }
         writer.seek(SeekFrom::Start(self.start))?;
         writer.write_all(&self.dat[0..])?;
         self.dirty = false;
@@ -160,6 +163,7 @@ impl<F: Read + Write + Seek> Write for BufFile<F> {
         let len = {
             let slab = self.fetch_slab(cursor)?;
             slab.uses = slab.uses.saturating_add(1);
+            slab.dirty = true;
             let mut dat = &mut slab.dat[(cursor - slab.start) as usize..];
             dat.write(buf)?
         };
@@ -169,9 +173,7 @@ impl<F: Read + Write + Seek> Write for BufFile<F> {
 
     fn flush(&mut self) -> Result<(), Error> {
         for slab in self.map.values_mut() {
-            if slab.dirty {
-                slab.write(&mut self.file)?;
-            }
+            slab.write(&mut self.file)?;
         }
         Ok(())
     }

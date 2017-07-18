@@ -1,6 +1,6 @@
 extern crate buf_file;
 
-use std::io::{Read, Write, Seek, SeekFrom, Cursor};
+use std::io::{self, Read, Write, Seek, SeekFrom, Cursor};
 
 use buf_file::BufFile;
 
@@ -33,4 +33,63 @@ fn simple_test() {
         let offset = 1024 * 1024 * i;
         assert_eq!(&data[offset..offset + 3], &[0, 0, 1]);
     }
+}
+
+#[test]
+fn write_counts() {
+    struct Writer {
+        inner: Cursor<Vec<u8>>,
+        write_count: u32,
+        read_count: u32,
+    }
+    impl Write for Writer {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.write_count += 1;
+            self.inner.write(buf)
+        }
+        
+        fn flush(&mut self) -> io::Result<()> {
+            self.inner.flush()
+        }
+    }
+    impl Read for Writer {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.read_count += 1;
+            self.inner.read(buf)
+        }
+    }
+    impl Seek for Writer {
+        fn seek(&mut self, from: SeekFrom) -> io::Result<u64> {
+            self.inner.seek(from)
+        }
+    }
+    let mut data = Writer {
+        inner: Cursor::new(vec![0; 1024]),
+        write_count: 0,
+        read_count: 0,
+    };
+    {
+        let mut file = BufFile::with_capacity(4, 16, &mut data).unwrap();
+        file.write_all(&[8; 32]).unwrap();
+        for i in (0..16).rev() {
+            // Skip every other slab
+            file.seek(SeekFrom::Start(i * 32)).unwrap();
+            if i % 2 == 0 {
+                let mut buf = [0; 8];
+                file.read_exact(&mut buf).unwrap();
+                if i == 0 {
+                    assert_eq!(buf, [8; 8]);
+                } else {
+                    assert_eq!(buf, [0; 8]);
+                }
+            } else {
+                file.write_all(&[1, 2, 3, 4]).unwrap();
+            }
+        }
+    }
+    // Extra 2 from writting 2 slabs early, then writing to all in rev order
+    assert_eq!(data.read_count, 18);
+    assert_eq!(data.write_count, 10);
+    let data = data.inner.into_inner();
+    assert_eq!(data.len(), 1024);
 }
