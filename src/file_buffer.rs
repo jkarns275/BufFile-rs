@@ -27,10 +27,12 @@ struct Slab {
 impl Slab {
     /// Creates a new slab, drawing it's data from the given file at the given location
     /// Location should be at the beginning of a slab (e.g. a muitiple of `SLAB_SIZE`)
-    pub fn new<F: Seek + Read + Write>(loc: u64, file: &mut F) -> Result<Slab, Error> {
+    pub fn new<F: Seek + Read + Write>(loc: u64, end: u64, file: &mut F) -> Result<Slab, Error> {
+        // If loc is greater than the length of the file (e.g. its an invalid Seek) this will return an error
         file.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
-        file.read(&mut dat[0..])?;
+        let end = if end - loc >= 2048 { 2048 } else { end & SLAB_MASK };
+        file.read(&mut dat[0..end as usize])?;
         Ok(Slab {
             dat: dat,
             start: loc,
@@ -118,6 +120,11 @@ impl<F: Write + Read + Seek> BufFile<F> {
         Ok(())
     }
 
+    /// Returns the current cursor_loc
+    pub fn cursor_loc(&self) -> u64 {
+        self.cursor
+    }
+
     /// Finds the slab that contains file index loc, if it doesn't exist None
     /// is returned. If it does exist, Some(index) is returned, where index
     /// is an index into self.dat.
@@ -139,21 +146,12 @@ impl<F: Write + Read + Seek> BufFile<F> {
         if self.map.contains_key(&start) {
             return Ok(self.map[&start].clone());
         }
-        // Add up to SLAB_SIZE bytes if the file is not long enough for this incoming location
-        let len = self.end as usize;
-        // The end if the file is not as long as it needs to be, write some dummy data (0's) to extend it
-        // This behavior will allow some strange behavior through, but it shouldnt't really be harmful
-        if len < start as usize + SLAB_SIZE && len < loc as usize {
-            let i = vec![0; SLAB_SIZE];
-            let dif = len & SLAB_MASK as usize;
-            self.file.write_all(&i[0..SLAB_SIZE - dif])?;
-            self.end = loc + 1;
-        }
+
         // If we're not at the maximum number of slabs, make a new one,
         // and add it to dat and to the map
         if self.dat.len() < self.slabs {
             let ind = self.dat.len();
-            match Slab::new(start, &mut self.file) {
+            match Slab::new(start, self.end, &mut self.file) {
                 Ok(x) => {
                     self.map.insert(start, self.dat.len());
                     self.dat.push(x);
@@ -180,7 +178,7 @@ impl<F: Write + Read + Seek> BufFile<F> {
                 }
             }
             // Make a new slab, write the old one to disk, replace old slab
-            match Slab::new(start, &mut self.file) {
+            match Slab::new(start, self.end, &mut self.file) {
                 Ok(x) => {
                     // Write the old slab to disk
                     self.dat[min].write(&mut self.file)?;
@@ -206,10 +204,11 @@ impl<F: Write + Read + Seek> BufFile<F> {
 
 impl<F: Write + Read + Seek> Read for BufFile<F> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        let len = buf.len();
         // If the place the cursor will be after the read is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
-        if buf.len() <= SLAB_SIZE
-            && (((buf.len() as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
+        if len <= SLAB_SIZE
+            && (((len as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
             {
             // The index in self.dat (which slab to use)
             let index;
@@ -230,30 +229,23 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
             {
                 // Since we're indexing, only use the lower bits n as index.
                 let masked = (self.cursor & SLAB_MASK) as usize;
-                let slice = &mut self.dat[index].dat[masked as usize .. masked as usize + buf.len()];
+                let slice = &mut self.dat[index].dat[masked as usize .. masked as usize + len];
                 buf.clone_from_slice(slice);
             }
 
             // Move the cursor
-            self.cursor += buf.len() as u64;
+            self.cursor += len as u64;
 
             // Return the number of bytes read
-            Ok(buf.len())
+            Ok(len)
         }
         // the data is contained in more than one slab, and may be larger than SLAB_SIZE bytes
         else {
-            // How many times does SLAB_SIZE go into slabs? Thats the lower limit on how many slabs we have to read from
-            let mut slabs = buf.len() / SLAB_SIZE;
-            // If there is a remainder
-            if buf.len() as u64 & SLAB_MASK > 0 { slabs += 1; }
-            // There is less than SLAB_SIZE bytes to read, but it is spread out over 2 slabs
-            if slabs == 1 { slabs = 2; }
-
             let mut bytes_read = 0;
-            // For each slab we have to go through
-            for _ in 0..slabs {
+            // While we have some reading to do...
+            while bytes_read != len {
                 // How many bytes to we have to read this iteration? Either the rest of the data or the rest of a slab
-                let to_read = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, buf.len() - bytes_read);
+                let to_read = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, len - bytes_read);
                 // if cursor is a multiple of SLAB_SIZE then cursor & slab_mask will be 0
 
                 // Which slab to read from
@@ -282,17 +274,18 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
                 bytes_read += to_read;
             }
 
-            Ok(buf.len())
+            Ok(len)
         }
     }
 }
 
 impl<F: Write + Read + Seek> Write for BufFile<F> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        let len = buf.len();
         // If the place the cursor will be after the write is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
-        if buf.len() <= SLAB_SIZE
-        && (((buf.len() as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
+        if len <= SLAB_SIZE
+        && (((len as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
         {
             // The index in self.dat (which slab to use)
             let index;
@@ -312,30 +305,24 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
             {
                 // Since we're indexing, only use the lower bits n as index.
                 let masked = (self.cursor & SLAB_MASK) as usize;
-                let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + buf.len()];
+                let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + len];
                 slice.clone_from_slice(buf);
             }
 
             // Move the cursor
-            self.cursor += buf.len() as u64;
+            self.cursor += len as u64;
+            if self.cursor > self.end { self.end = self.cursor }
 
             // Return the number of bytes written
-            Ok(buf.len())
+            Ok(len)
         }
         // the data is contained in more than one slab, and may be larger than SLAB_SIZE bytes
         else {
-            // How many times does SLAB_SIZE go into slabs? Thats the lower limit on how many slabs we have to read from
-            let mut slabs = buf.len() / SLAB_SIZE;
-            // If there is a remainder
-            if buf.len() as u64 & SLAB_MASK > 0 { slabs += 1; }
-            // There is less than SLAB_SIZE bytes to read, but it is spread out over 2 slabs
-            if slabs == 1 { slabs = 2; }
-
             let mut bytes_written = 0;
-            // For each slab we have to go through
-            for _ in 0..slabs {
+            // While we have some writting to do...
+            while bytes_written != len {
                 // How many bytes to we have to read this iteration? Either the rest of the data or the rest of a slab
-                let to_write = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, buf.len() - bytes_written);
+                let to_write = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, len - bytes_written);
                 // if cursor is a multiple of SLAB_SIZE then cursor & slab_mask will be 0
 
                 // Which slab to read from
@@ -363,7 +350,7 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
                 bytes_written += to_write;
             }
 
-            Ok(buf.len())
+            Ok(len)
         }
     }
 
