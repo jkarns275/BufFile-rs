@@ -11,7 +11,8 @@ pub struct Slab {
     /// First byte in the file that is contained in this slab
     start: u64,
     /// Number of times this slab has been accessed.
-    uses: u64
+    uses: u32,
+    dirty: bool,
 }
 
 impl Slab {
@@ -36,14 +37,16 @@ impl Slab {
         Ok(Slab {
             dat: dat,
             start: loc,
-            uses: 0
+            uses: 0,
+            dirty: true,
         })
     }
 
     /// Write the slab to disk
-    pub fn write<W: Write + Seek + ?Sized>(&self, writer: &mut W) -> Result<(), Error> {
+    pub fn write<W: Write + Seek + ?Sized>(&mut self, writer: &mut W) -> Result<(), Error> {
         writer.seek(SeekFrom::Start(self.start))?;
         writer.write_all(&self.dat[0..])?;
+        self.dirty = false;
         Ok(())
     }
 }
@@ -113,7 +116,7 @@ impl<F: Read + Write + Seek> BufFile<F> {
         }
         if self.map.len() >= self.max_slabs {
             let mut min_start = 0;
-            let mut min_uses = u64::max_value();
+            let mut min_uses = u32::max_value();
             for (&start, slab) in &self.map {
                 if slab.uses == 1 {
                     // The minimum number of reads is 1, so if we encounter 1 just break.
@@ -126,7 +129,7 @@ impl<F: Read + Write + Seek> BufFile<F> {
                 }
             }
             // Unwrap is safe because we find the start above
-            let old_slab = self.map.remove(&min_start).unwrap();
+            let mut old_slab = self.map.remove(&min_start).unwrap();
             old_slab.write(&mut self.file)?;
             // Move the cursor back to where it was
             self.file.seek(SeekFrom::Start(self.cursor))?;
@@ -142,7 +145,7 @@ impl<F: Read + Write + Seek> Read for BufFile<F> {
         let cursor = self.cursor;
         let len = {
             let slab = self.fetch_slab(cursor)?;
-            slab.uses += 1;
+            slab.uses = slab.uses.saturating_add(1);
             let mut dat = &slab.dat[(cursor - slab.start) as usize..];
             dat.read(buf)?
         };
@@ -156,7 +159,7 @@ impl<F: Read + Write + Seek> Write for BufFile<F> {
         let cursor = self.cursor;
         let len = {
             let slab = self.fetch_slab(cursor)?;
-            slab.uses += 1;
+            slab.uses = slab.uses.saturating_add(1);
             let mut dat = &mut slab.dat[(cursor - slab.start) as usize..];
             dat.write(buf)?
         };
@@ -165,8 +168,10 @@ impl<F: Read + Write + Seek> Write for BufFile<F> {
     }
 
     fn flush(&mut self) -> Result<(), Error> {
-        for slab in self.map.values() {
-            slab.write(&mut self.file)?;
+        for slab in self.map.values_mut() {
+            if slab.dirty {
+                slab.write(&mut self.file)?;
+            }
         }
         Ok(())
     }
