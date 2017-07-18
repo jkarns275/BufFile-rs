@@ -6,4 +6,3 @@ description = "A Buffered File that allows for both reading and writing"
 license = "MIT"
 
 [dependencies]
-raw_serde = "0.1.4"
