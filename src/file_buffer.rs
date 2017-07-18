@@ -98,7 +98,7 @@ impl<F: Read + Write + Seek> BufFile<F> {
     /// is returned. If it does exist, Some(index) is returned, where index
     /// is an index into self.dat.
     fn find_slab(&self, loc: u64) -> Option<usize> {
-        let start = (loc | SLAB_MASK) ^ SLAB_MASK;
+        let start = loc & !SLAB_MASK;
         if self.map.contains_key(&start) {
             let x = self.map[&start];
             Some(x)
@@ -111,7 +111,7 @@ impl<F: Read + Write + Seek> BufFile<F> {
     /// the least frequently used slab to disk and load the new one into self.dat,
     /// then return Ok(index), index being an index for self.dat.
     fn add_slab(&mut self, loc: u64) -> Result<usize, Error> {
-        let start = (loc | SLAB_MASK) ^ SLAB_MASK;
+        let start = loc & !SLAB_MASK;
         if self.map.contains_key(&start) {
             return Ok(self.map[&start]);
         }
@@ -185,7 +185,7 @@ impl<F: Read + Write + Seek> Read for BufFile<F> {
         // If the place the cursor will be after the read is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
         if buf.len() <= SLAB_SIZE
-            && (((buf.len() as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
+            && ((buf.len() as u64 + self.cursor - 1) & !SLAB_MASK) == self.cursor & !SLAB_MASK
             {
             // The index in self.dat (which slab to use)
             let index;
@@ -266,7 +266,7 @@ impl<F: Read + Write + Seek> Write for BufFile<F> {
         // If the place the cursor will be after the write is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
         if buf.len() <= SLAB_SIZE
-        && (((buf.len() as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
+        && (buf.len() as u64 + self.cursor - 1) & !SLAB_MASK == self.cursor & !SLAB_MASK
         {
             // The index in self.dat (which slab to use)
             let index;
