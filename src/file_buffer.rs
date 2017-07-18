@@ -391,7 +391,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
             },
             SeekFrom::End(x) => {
                 self.cursor =
-                    if x < 0 { self.end - (-x) as u64 }     // This would be an error if buffers / files
+                    if x < 0 { self.end - (-x) as u64 }     // This could be an error if buffers / files
                     else { self.end - x as u64 };           // weren't automatically extended beyond
                                                             // the end.
                 let cursor = self.cursor;
