@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::cmp;
 
 /// Slab size MUST be a power of 2!
-const SLAB_SIZE: usize = 1024*1024; // 1 Megabyte
+const SLAB_SIZE: usize = 1024*512; // 1 Megabyte
 /// Used to turn a file index into an array index (since SLAB_SIZE is a power of two,
 /// subtracting one from it will yield all ones, and anding it with a number will
 /// yield only the lowest n bits, where SLAB_SIZE = 2^n
@@ -39,37 +39,37 @@ impl Slab {
     }
 
     /// Write the slab to disk
-    pub fn write(&self, file: &mut File) -> Result<(), Error> {
+    pub fn write<F: Seek + Write>(&self, file: &mut F) -> Result<(), Error> {
         file.seek(SeekFrom::Start(self.start))?;
         file.write_all(&self.dat[0..])?;
         Ok(())
     }
 }
 
-pub struct BufFile {
+pub struct BufFile<F: Write + Read + Seek> {
     /// The maximum number of slabs this BufFile can have
     slabs: usize,
     /// Used to quickly map a file index to an array index (to index self.dat)
     map: HashMap<u64, usize>,
     /// Contains the actual slabs
-    pub dat: Vec<Slab>,
+    dat: Vec<Slab>,
     /// The file to be written to and read from
-    file: File,
+    file: F,
     /// Represents the current location of the cursor.
     /// This does not reflect the actual location of the cursor in the file.
-    pub cursor: u64,
+    cursor: u64,
     /// The file index that is the end of the file.
-    pub end: u64
+    end: u64
 }
 
-impl BufFile {
+impl<F: Write + Read + Seek> BufFile<F: Write + Read + Seek> {
     /// Creates a new BufFile.
-    pub fn new(mut file: File) -> Result<BufFile, Error> {
+    pub fn new(mut file: F) -> Result<BufFile<F>, Error> {
         Self::with_capacity(DEFAULT_NUM_SLABS, file)
     }
 
     /// Creates a new BufFile with the specified number of slabs.
-    pub fn with_capacity(slabs: usize, mut file: File) -> Result<BufFile, Error> {
+    pub fn with_capacity(slabs: usize, mut file: F) -> Result<BufFile<F>, Error> {
         // Find the end of the file, in case the file isnt empty.
         let end = file.seek(SeekFrom::End(0))?;
 
@@ -77,12 +77,47 @@ impl BufFile {
         file.seek(SeekFrom::Start(0))?;
         Ok(BufFile {
             slabs: slabs,   // Number of slabs
-            dat: vec![],
+            dat: Vec::with_capacity(slabs),
             map: HashMap::new(),
             file,
             cursor: 0,      // Since the cursor is at the start of the file
             end
         })
+    }
+
+    /// Change the number of slabs to the desired number. If there are more slabs
+    /// currently loaded than `num_slabs`, then the least frequently used slab(s)
+    /// will be removed until it is equal. Every removed slab gets written to disk,
+    /// creating the possibility for I/O errors.
+    pub fn set_slabs(&mut self, num_slabs: usize) -> Result<(), Error> {
+        // There isn't anything logical to actually do here, so just return
+        if num_slabs == 0 { return Ok(()) }
+        if num_slabs >= self.dat.len() {
+            self.slabs = num_slabs;
+            return Ok(())
+        }
+        while self.dat.len() > num_slabs {
+            let mut min = 0;
+            for i in 0..self.slabs {
+                if self.dat[min].uses == 1 {
+                    min = i;
+                    // The minimum number of reads is 1, so if we encounter 1 just break.
+                    break;
+                }
+                if self.dat[min].uses > self.dat[i].uses {
+                    min = i;
+                }
+            }
+            self.dat[min].write()?;
+            let _ = self.dat.swap_remove(min);
+        }
+        self.slabs = num_slabs;
+        Ok(())
+    }
+
+    pub fn into_innter(self) -> Result<F, Error> {
+        self.flush()?;
+        self.file
     }
 
     /// Finds the slab that contains file index loc, if it doesn't exist None
@@ -171,7 +206,7 @@ impl BufFile {
     }
 }
 
-impl Read for BufFile {
+impl<F: Write + Read + Seek> Read for BufFile<F: Write + Read + Seek> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         // If the place the cursor will be after the read is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
@@ -252,7 +287,7 @@ impl Read for BufFile {
     }
 }
 
-impl Write for BufFile {
+impl<F: Write + Read + Seek> Write for BufFile<F: Write + Read + Seek> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
         // If the place the cursor will be after the write is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
@@ -340,7 +375,7 @@ impl Write for BufFile {
     }
 }
 
-impl Seek for BufFile {
+impl<F: Write + Read + Seek> Seek for BufFile<F: Write + Read + Seek> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
         match pos {
             SeekFrom::Start(x) => {
@@ -392,6 +427,6 @@ impl Seek for BufFile {
 
 impl Drop for BufFile {
      fn drop(&mut self) {
-         self.flush();
+         let _ = self.flush();
      }
 }
