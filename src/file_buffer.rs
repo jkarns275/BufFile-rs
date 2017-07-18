@@ -27,7 +27,7 @@ pub struct Slab {
 impl Slab {
     /// Creates a new slab, drawing it's data from the given file at the given location
     /// Location should be at the beginning of a slab (e.g. a muitiple of SLAB_SIZE)
-    pub fn new(loc: u64, file: &mut File) -> Result<Slab, Error> {
+    pub fn new<F: Seek + Read + Write>(loc: u64, file: &mut F) -> Result<Slab, Error> {
         file.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
         file.read(&mut dat[0..])?;
@@ -62,7 +62,7 @@ pub struct BufFile<F: Write + Read + Seek> {
     end: u64
 }
 
-impl<F: Write + Read + Seek> BufFile<F: Write + Read + Seek> {
+impl<F: Write + Read + Seek> BufFile<F> {
     /// Creates a new BufFile.
     pub fn new(mut file: F) -> Result<BufFile<F>, Error> {
         Self::with_capacity(DEFAULT_NUM_SLABS, file)
@@ -108,16 +108,11 @@ impl<F: Write + Read + Seek> BufFile<F: Write + Read + Seek> {
                     min = i;
                 }
             }
-            self.dat[min].write()?;
+            self.dat[min].write(&mut self.file)?;
             let _ = self.dat.swap_remove(min);
         }
         self.slabs = num_slabs;
         Ok(())
-    }
-
-    pub fn into_innter(self) -> Result<F, Error> {
-        self.flush()?;
-        self.file
     }
 
     /// Finds the slab that contains file index loc, if it doesn't exist None
@@ -206,7 +201,7 @@ impl<F: Write + Read + Seek> BufFile<F: Write + Read + Seek> {
     }
 }
 
-impl<F: Write + Read + Seek> Read for BufFile<F: Write + Read + Seek> {
+impl<F: Write + Read + Seek> Read for BufFile<F> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         // If the place the cursor will be after the read is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
@@ -287,7 +282,7 @@ impl<F: Write + Read + Seek> Read for BufFile<F: Write + Read + Seek> {
     }
 }
 
-impl<F: Write + Read + Seek> Write for BufFile<F: Write + Read + Seek> {
+impl<F: Write + Read + Seek> Write for BufFile<F> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
         // If the place the cursor will be after the write is in the same slab as it will be during the beginning,
         // and the length of the buffer is less than SLAB_SIZE
@@ -375,7 +370,7 @@ impl<F: Write + Read + Seek> Write for BufFile<F: Write + Read + Seek> {
     }
 }
 
-impl<F: Write + Read + Seek> Seek for BufFile<F: Write + Read + Seek> {
+impl<F: Write + Read + Seek> Seek for BufFile<F> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
         match pos {
             SeekFrom::Start(x) => {
@@ -425,7 +420,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F: Write + Read + Seek> {
     }
 }
 
-impl Drop for BufFile {
+impl<F: Read + Write + Seek> Drop for BufFile<F> {
      fn drop(&mut self) {
          let _ = self.flush();
      }
