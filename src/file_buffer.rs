@@ -231,7 +231,6 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
 
             // We're using this slab, so increment its use count
             self.dat[index].uses += 1;
-            self.dat[index].dirty = true;
             {
                 // Since we're indexing, only use the lower bits n as index.
                 let masked = (self.cursor & SLAB_MASK) as usize;
@@ -269,7 +268,6 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
                 };
                 // We're using the slab so increment the use count
                 self.dat[index].uses += 1;
-                self.dat[index].dirty = true;
                 {
                     let masked = (self.cursor & SLAB_MASK) as usize;
                     let slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_read];
@@ -308,6 +306,7 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
 
             // We're using this slab, so increment its use count
             self.dat[index].uses += 1;
+            self.dat[index].dirty = true;
             {
                 // Since we're indexing, only use the lower bits n as index.
                 let masked = (self.cursor & SLAB_MASK) as usize;
@@ -346,6 +345,7 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
                 };
                 // We're using the slab so increment the use count
                 self.dat[index].uses += 1;
+                self.dat[index].dirty = true;
                 {
                     let masked = (self.cursor & SLAB_MASK) as usize;
                     let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_write];
