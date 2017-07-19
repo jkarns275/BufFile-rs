@@ -2,7 +2,7 @@ use std::io::{ Error, Seek, SeekFrom, Write, Read };
 use std::collections::HashMap;
 
 /// Slab size MUST be a power of 2!
-const SLAB_SIZE: usize = 1024*512; // Change this number to change the SLAB_SIZE (currently @ 512kb)
+const SLAB_SIZE: usize = 1024*1024; // Change this number to change the SLAB_SIZE (currently @ 512kb)
 
 /// Used to turn a file index into an array index (since SLAB_SIZE is a power of two,
 /// subtracting one from it will yield all ones, and anding it with a number will
@@ -34,8 +34,7 @@ impl Slab {
         if loc != end {
             // Since we know where the end of the file is we can do a quick check here to see if the file will
             // fill the buffer, and if it wont we know how much data we can read.
-            let index = if end as i64 - loc as i64 >= SLAB_SIZE as i64 { SLAB_SIZE } else { (end & SLAB_MASK) as usize };
-            file.read_exact(&mut dat[0..index as usize])?;
+            file.read(&mut dat[0..])?;
         }
         Ok(Slab {
             dat: dat,
@@ -222,7 +221,8 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
             slab.uses += 1;
             let start = slab.start;
             let mut dat = &slab.dat[(cursor - start) as usize ..];
-            dat.read(buf)?
+            let x = dat.read(buf);
+            x?
         };
         self.cursor += len as u64;
         Ok(len)
