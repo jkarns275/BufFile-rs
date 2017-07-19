@@ -28,8 +28,8 @@ mod bench {
                         .unwrap()
                     ).unwrap()
             };
-            let mut kb = vec![0u8; 1024];
-            for i in 0..1024*16 {
+            let kb = vec![0u8; 1024];
+            for _ in 0..1024*16 {
                 test_buffile.write(&kb).unwrap();
             }
         });
@@ -48,10 +48,10 @@ mod bench {
                     .unwrap()
                 ).unwrap()
         };
-        let mut kb = vec![0u8; 1024*16];
+        let kb = vec![0u8; 1024*16];
         test_buffile.write(&kb).unwrap();
         {
-            test_buffile;
+            let _ = test_buffile;
         };
         b.iter(|| {
             let mut test_buffile = {
@@ -67,7 +67,7 @@ mod bench {
             };
             let mut kb = vec![0u8; 1024*1024*16];
             for i in 0..1024*16 {
-                test_buffile.read(&mut kb[i * 1024 ..(i + 1) * 1024]);
+                test_buffile.read(&mut kb[i * 1024 ..(i + 1) * 1024]).unwrap();
             }
         });
     }
@@ -104,7 +104,7 @@ mod bench {
             };
             let mut kb = vec![0u8; 1024*1024*16];
             for i in 0..1024*16 {
-                test_buffile.read(&mut kb[i * 1024 ..(i + 1) * 1024]);
+                test_buffile.read(&mut kb[i * 1024 ..(i + 1) * 1024]).unwrap();
             }
         });
     }
@@ -124,9 +124,9 @@ mod bench {
                         .unwrap()
                     )
             };
-            let mut kb = vec![0u8; 1024];
-            for i in 0..1024*16 {
-                test_buffile.write(&kb);
+            let kb = vec![0u8; 1024];
+            for _ in 0..1024*16 {
+                test_buffile.write(&kb).unwrap();
             }
         });
     }
@@ -145,8 +145,8 @@ mod bench {
                         .unwrap()
                     ).unwrap()
             };
-            let mut kb = vec![0u8; 1024];
-            for i in 0..1024*16 {
+            let kb = vec![0u8; 1024];
+            for _ in 0..1024*16 {
                 test_buffile.write(&kb).unwrap();
             }
             test_buffile.seek(SeekFrom::Start(0)).unwrap();
@@ -172,7 +172,7 @@ mod bench {
                         .unwrap()
                     )
             };
-            let mut kb = vec![0u8; 1024];
+            let kb = vec![0u8; 1024];
             for i in 0..1024*16 {
                 test_buffile.write(&kb).unwrap();
             }
@@ -196,17 +196,15 @@ mod tests {
     fn test_file_buffer() {
         use std::fs::{ File, OpenOptions };
         use std::io::{ Error, Seek, SeekFrom, Read, Write };
-        use std::marker::PhantomData;
         use file_buffer::*;
         use std::time::{ SystemTime };
         use rand::Rng;
-        use rand;
         use rand::*;
 
         let now = SystemTime::now();
 
         let mut test_file = OpenOptions::new().read(true).write(true).truncate(true).create(true).open("yzyy").unwrap();
-        let mut t = OpenOptions::new().read(true).write(true).truncate(true).create(true).open("zyys").unwrap();
+        let t = OpenOptions::new().read(true).write(true).truncate(true).create(true).open("zyys").unwrap();
         let mut test_buffile = BufFile::new(t).unwrap();
 
         let mut rng = XorShiftRng::from_seed([0, 1, 377, 6712]);
