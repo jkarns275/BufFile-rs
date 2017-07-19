@@ -4,7 +4,27 @@ A Buffered File for rust that allows both reading and writing.
 By default, each "hotspot" (referred to as slab in the code) is 512kb in size,
 this can be changed quite easily by moving file_buffer.rs into your rust project,
 rather than using the crate.
+
+# Performance
+Under the right conditions, BufFile can outperform BufReader and BufWriter, or
+a combination of BufReader and BufWriter. As shown by the very simple benchmarks
+in lib.rs:
+
+read_16_mb_buf_file                   ... bench:  23,615,268 ns/iter (+/- 4,529,611)
+read_16_mb_bufreader                  ... bench:  37,478,706 ns/iter (+/- 1,144,427)
+write_16_mb_buf_file                  ... bench:   5,270,937 ns/iter (+/- 828,063)
+write_16_mb_buf_write                 ... bench:  27,740,703 ns/iter (+/- 26,047,984)
+write_and_read_16_mb_bufwrite_bufread ... bench:  43,212,873 ns/iter (+/- 25,221,377)
+write_and_read_16_mb_file_buf         ... bench:  41,640,289 ns/iter (+/- 64,370,614)
+
+
+When used for random access files, the performance gain when compared with BufReader
+and BufWriter is even further exaggerated (it is cumbersome to use the two anyways).
+
 # Example Usage
+This example is a bit obtuse but it demonstrates the relative speed of the BufFile
+
+
 Cargo.toml
 ```toml
 [dependencies]
