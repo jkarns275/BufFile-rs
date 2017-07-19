@@ -10,12 +10,12 @@ Under the right conditions, BufFile can outperform BufReader and BufWriter, or
 a combination of BufReader and BufWriter. As shown by the very simple benchmarks
 in lib.rs:
 
-read_16_mb_buf_file                   ... bench:  23,615,268 ns/iter (+/- 4,529,611)
-read_16_mb_bufreader                  ... bench:  37,478,706 ns/iter (+/- 1,144,427)
-write_16_mb_buf_file                  ... bench:   5,270,937 ns/iter (+/- 828,063)
-write_16_mb_buf_write                 ... bench:  27,740,703 ns/iter (+/- 26,047,984)
-write_and_read_16_mb_bufwrite_bufread ... bench:  43,212,873 ns/iter (+/- 25,221,377)
-write_and_read_16_mb_file_buf         ... bench:  41,640,289 ns/iter (+/- 64,370,614)
+* read_16_mb_buf_file                   ... bench:  23,615,268 ns/iter (+/- 4,529,611)
+* read_16_mb_bufreader                  ... bench:  37,478,706 ns/iter (+/- 1,144,427)
+* write_16_mb_buf_file                  ... bench:   5,270,937 ns/iter (+/- 828,063)
+* write_16_mb_buf_write                 ... bench:  27,740,703 ns/iter (+/- 26,047,984)
+* write_and_read_16_mb_bufwrite_bufread ... bench:  43,212,873 ns/iter (+/- 25,221,377)
+* write_and_read_16_mb_file_buf         ... bench:  41,640,289 ns/iter (+/- 64,370,614)
 
 
 When used for random access files, the performance gain when compared with BufReader
