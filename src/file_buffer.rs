@@ -31,8 +31,8 @@ impl Slab {
         // If loc is greater than the length of the file (e.g. its an invalid Seek) this will return an error
         file.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
-        let end = if end - loc >= 2048 { 2048 } else { end & SLAB_MASK };
-        file.read(&mut dat[0..end as usize])?;
+        let index = if end as i64 - loc as i64 >= SLAB_SIZE as i64 { SLAB_SIZE } else { (end & SLAB_MASK) as usize };
+        file.read(&mut dat[0..index as usize])?;
         Ok(Slab {
             dat: dat,
             start: loc,
