@@ -8,7 +8,7 @@ rather than using the crate.
 # Performance
 Under the right conditions, BufFile can outperform BufReader and BufWriter, or
 a combination of BufReader and BufWriter. As shown by the very simple benchmarks
-in [lib.rs](https://github.com/jkarns275/BufFile-rs/blob/master/src/lib.rs):
+in [src/lib.rs](https://github.com/jkarns275/BufFile-rs/blob/master/src/lib.rs):
 
 * read_16_mb_buf_file                   ... bench:  23,615,268 ns/iter (+/- 4,529,611)
 * read_16_mb_bufreader                  ... bench:  37,478,706 ns/iter (+/- 1,144,427)
