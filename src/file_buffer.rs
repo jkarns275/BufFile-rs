@@ -59,7 +59,7 @@ pub struct BufFile<F: Write + Read + Seek> {
     /// Contains the actual slabs
     dat: Vec<Slab>,
     /// The file to be written to and read from
-    file: F,
+    file: Option<F>,
     /// Represents the current location of the cursor.
     /// This does not reflect the actual location of the cursor in the file.
     cursor: u64,
@@ -84,10 +84,16 @@ impl<F: Write + Read + Seek> BufFile<F> {
             slabs: slabs,   // Number of slabs
             dat: Vec::with_capacity(slabs),
             map: HashMap::new(),
-            file,
+            file: Some(file),
             cursor: 0,      // Since the cursor is at the start of the file
             end
         })
+    }
+
+    /// Returns the underlying Read + Write + Sync struct after writing to disk.
+    pub fn into_inner(mut self) -> Result<F, Error> {
+        self.flush()?;
+        Ok(self.file.take().unwrap())
     }
 
     /// Change the number of slabs to the desired number. If there are more slabs
@@ -113,7 +119,7 @@ impl<F: Write + Read + Seek> BufFile<F> {
                     min = i;
                 }
             }
-            self.dat[min].write(&mut self.file)?;
+            self.dat[min].write(self.file.as_mut().unwrap())?;
             let _ = self.dat.swap_remove(min);
         }
         self.slabs = num_slabs;
@@ -151,7 +157,7 @@ impl<F: Write + Read + Seek> BufFile<F> {
         // and add it to dat and to the map
         if self.dat.len() < self.slabs {
             let ind = self.dat.len();
-            match Slab::new(start, self.end, &mut self.file) {
+            match Slab::new(start, self.end, self.file.as_mut().unwrap()) {
                 Ok(x) => {
                     self.map.insert(start, self.dat.len());
                     self.dat.push(x);
@@ -178,13 +184,13 @@ impl<F: Write + Read + Seek> BufFile<F> {
                 }
             }
             // Make a new slab, write the old one to disk, replace old slab
-            match Slab::new(start, self.end, &mut self.file) {
+            match Slab::new(start, self.end, self.file.as_mut().unwrap()) {
                 Ok(x) => {
                     // Write the old slab to disk
-                    self.dat[min].write(&mut self.file)?;
+                    self.dat[min].write(self.file.as_mut().unwrap())?;
 
                     // Move the cursor back to where it was
-                    self.file.seek(SeekFrom::Start(self.cursor))?;
+                    self.file.as_mut().unwrap().seek(SeekFrom::Start(self.cursor))?;
 
                     // Remove the old slab from the map
                     self.map.remove(&self.dat[min].start);
@@ -356,7 +362,7 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
 
     fn flush(&mut self) -> Result<(), Error> {
         for slab in self.dat.iter_mut() {
-            slab.write(&mut self.file)?;
+            slab.write(self.file.as_mut().unwrap())?;
         }
         Ok(())
     }
@@ -415,6 +421,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
 impl<F: Read + Write + Seek> Drop for BufFile<F> {
     /// Write all of the slabs to disk before closing the file.
      fn drop(&mut self) {
+         if self.file.is_none() { return }
          let _ = self.flush();
      }
 }
