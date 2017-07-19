@@ -31,8 +31,10 @@ impl Slab {
         // If loc is greater than the length of the file (e.g. its an invalid Seek) this will return an error
         file.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
+        // Since we know where the end of the file is we can do a quick check here to see if the file will
+        // fill the buffer, and if it wont we know how much data we can read.
         let index = if end as i64 - loc as i64 >= SLAB_SIZE as i64 { SLAB_SIZE } else { (end & SLAB_MASK) as usize };
-        file.read(&mut dat[0..index as usize])?;
+        file.read_exact(&mut dat[0..index as usize])?;
         Ok(Slab {
             dat: dat,
             start: loc,
@@ -216,6 +218,7 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
         if len <= SLAB_SIZE
             && (((len as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
             {
+            if self.cursor >= self.end { return Ok(0) }
             // The index in self.dat (which slab to use)
             let index;
             let cursor = self.cursor;
@@ -234,8 +237,9 @@ impl<F: Write + Read + Seek> Read for BufFile<F> {
             {
                 // Since we're indexing, only use the lower bits n as index.
                 let masked = (self.cursor & SLAB_MASK) as usize;
-                let slice = &mut self.dat[index].dat[masked as usize .. masked as usize + len];
-                buf.clone_from_slice(slice);
+                // If we're at the end of the file, don't go over!
+                let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + len];
+                 buf.clone_from_slice(slice);
             }
 
             // Move the cursor
