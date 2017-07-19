@@ -1,6 +1,5 @@
 use std::io::{ Error, Seek, SeekFrom, Write, Read };
 use std::collections::HashMap;
-use std::cmp;
 
 /// Slab size MUST be a power of 2!
 const SLAB_SIZE: usize = 1024*512; // Change this number to change the SLAB_SIZE (currently @ 512kb)
@@ -31,10 +30,13 @@ impl Slab {
         // If loc is greater than the length of the file (e.g. its an invalid Seek) this will return an error
         file.seek(SeekFrom::Start(loc))?;
         let mut dat = vec![0u8; SLAB_SIZE];
-        // Since we know where the end of the file is we can do a quick check here to see if the file will
-        // fill the buffer, and if it wont we know how much data we can read.
-        let index = if end as i64 - loc as i64 >= SLAB_SIZE as i64 { SLAB_SIZE } else { (end & SLAB_MASK) as usize };
-        file.read_exact(&mut dat[0..index as usize])?;
+        // If the end and the location are the same, there is no data to read
+        if loc != end {
+            // Since we know where the end of the file is we can do a quick check here to see if the file will
+            // fill the buffer, and if it wont we know how much data we can read.
+            let index = if end as i64 - loc as i64 >= SLAB_SIZE as i64 { SLAB_SIZE } else { (end & SLAB_MASK) as usize };
+            file.read_exact(&mut dat[0..index as usize])?;
+        }
         Ok(Slab {
             dat: dat,
             start: loc,
@@ -133,13 +135,22 @@ impl<F: Write + Read + Seek> BufFile<F> {
         self.cursor
     }
 
+    fn fetch_slab(&mut self, mut loc: u64) -> Result<&mut Slab, Error> {
+        loc = loc & !SLAB_MASK;
+        if let Some(x) = self.find_slab(loc) {
+            Ok(&mut self.dat[x])
+        } else {
+            let ind = self.add_slab(loc)?;
+            Ok(&mut self.dat[ind])
+        }
+    }
+
     /// Finds the slab that contains file index loc, if it doesn't exist None
     /// is returned. If it does exist, Some(index) is returned, where index
     /// is an index into self.dat.
-    fn find_slab(&self, loc: u64) -> Option<usize> {
-        let start = (loc | SLAB_MASK) ^ SLAB_MASK;
-        if self.map.contains_key(&start) {
-            let x = self.map[&start].clone();
+    fn find_slab(&mut self, loc: u64) -> Option<usize> {
+        if self.map.contains_key(&loc) {
+            let x = self.map[&loc].clone();
             Some(x)
         } else {
             None
@@ -149,12 +160,10 @@ impl<F: Write + Read + Seek> BufFile<F> {
     /// Adds a slab to the BufFile, if it isn't already present. It will write
     /// the least frequently used slab to disk and load the new one into self.dat,
     /// then return Ok(index), index being an index for self.dat.
-    fn add_slab(&mut self, loc: u64) -> Result<usize, Error> {
-        let start = (loc | SLAB_MASK) ^ SLAB_MASK;
+    fn add_slab(&mut self, start: u64) -> Result<usize, Error> {
         if self.map.contains_key(&start) {
             return Ok(self.map[&start].clone());
         }
-
         // If we're not at the maximum number of slabs, make a new one,
         // and add it to dat and to the map
         if self.dat.len() < self.slabs {
@@ -168,7 +177,6 @@ impl<F: Write + Read + Seek> BufFile<F> {
                 Err(e) => Err(e)
             }
         }
-
         // We are at the maximum number of slabs - one of them must be removed
         else {
             // Find the minimum - we have to go through all of them, there isn't
@@ -190,16 +198,12 @@ impl<F: Write + Read + Seek> BufFile<F> {
                 Ok(x) => {
                     // Write the old slab to disk
                     self.dat[min].write(self.file.as_mut().unwrap())?;
-
                     // Move the cursor back to where it was
                     self.file.as_mut().unwrap().seek(SeekFrom::Start(self.cursor))?;
-
                     // Remove the old slab from the map
                     self.map.remove(&self.dat[min].start);
-
                     // Add the new one
                     self.map.insert(start, min);
-
                     // Assign the new value
                     self.dat[min] = x;
                     Ok(min)
@@ -212,156 +216,32 @@ impl<F: Write + Read + Seek> BufFile<F> {
 
 impl<F: Write + Read + Seek> Read for BufFile<F> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        let len = buf.len();
-        // If the place the cursor will be after the read is in the same slab as it will be during the beginning,
-        // and the length of the buffer is less than SLAB_SIZE
-        if len <= SLAB_SIZE
-            && (((len as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
-            {
-            if self.cursor >= self.end { return Ok(0) }
-            // The index in self.dat (which slab to use)
-            let index;
-            let cursor = self.cursor;
-
-            // If we dont find it, add a new one!
-            match self.find_slab(cursor) {
-                Some(x) => index = x,
-                None => match self.add_slab(cursor) {
-                    Ok(x) => index = x,
-                    Err(e) => return Err(e)
-                }
-            };
-
-            // We're using this slab, so increment its use count
-            self.dat[index].uses += 1;
-            {
-                // Since we're indexing, only use the lower bits n as index.
-                let masked = (self.cursor & SLAB_MASK) as usize;
-                // If we're at the end of the file, don't go over!
-                let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + len];
-                 buf.clone_from_slice(slice);
-            }
-
-            // Move the cursor
-            self.cursor += len as u64;
-
-            // Return the number of bytes read
-            Ok(len)
-        }
-        // the data is contained in more than one slab, and may be larger than SLAB_SIZE bytes
-        else {
-            let mut bytes_read = 0;
-            // While we have some reading to do...
-            while bytes_read != len {
-                // How many bytes to we have to read this iteration? Either the rest of the data or the rest of a slab
-                let to_read = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, len - bytes_read);
-                // if cursor is a multiple of SLAB_SIZE then cursor & slab_mask will be 0
-
-                // Which slab to read from
-                let index;
-                // Combat the borrow-checker
-                let cursor = self.cursor;
-                // If our slab is already present, cool, if not, add it
-                match self.find_slab(cursor) {
-                    Some(x) => index = x,
-                    None =>
-                        match self.add_slab(cursor) {
-                            Ok(x) => index = x,
-                            Err(e) => return Err(e)
-                        }
-                };
-                // We're using the slab so increment the use count
-                self.dat[index].uses += 1;
-                {
-                    let masked = (self.cursor & SLAB_MASK) as usize;
-                    let slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_read];
-                    let mut target = &mut buf[bytes_read .. bytes_read + to_read];
-                    target.clone_from_slice(slice);
-                }
-                self.cursor += to_read as u64;
-                bytes_read += to_read;
-            }
-
-            Ok(len)
-        }
+        let cursor = self.cursor;
+        let len = {
+            let slab = self.fetch_slab(cursor)?;
+            slab.uses += 1;
+            let start = slab.start;
+            let mut dat = &slab.dat[(cursor - start) as usize ..];
+            dat.read(buf)?
+        };
+        self.cursor += len as u64;
+        Ok(len)
     }
 }
 
 impl<F: Write + Read + Seek> Write for BufFile<F> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        let len = buf.len();
-        // If the place the cursor will be after the write is in the same slab as it will be during the beginning,
-        // and the length of the buffer is less than SLAB_SIZE
-        if len <= SLAB_SIZE
-        && (((len as u64 + self.cursor - 1) | SLAB_MASK) ^ SLAB_MASK == (self.cursor | SLAB_MASK) ^ SLAB_MASK)
-        {
-            // The index in self.dat (which slab to use)
-            let index;
-            let cursor = self.cursor;
-
-            // If we dont find it, add a new one!
-            match self.find_slab(cursor) {
-                Some(x) => index = x,
-                None => match self.add_slab(cursor) {
-                    Ok(x) => index = x,
-                    Err(e) => return Err(e)
-                }
-            };
-
-            // We're using this slab, so increment its use count
-            self.dat[index].uses += 1;
-            self.dat[index].dirty = true;
-            {
-                // Since we're indexing, only use the lower bits n as index.
-                let masked = (self.cursor & SLAB_MASK) as usize;
-                let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + len];
-                slice.clone_from_slice(buf);
-            }
-
-            // Move the cursor
-            self.cursor += len as u64;
-            if self.cursor > self.end { self.end = self.cursor }
-
-            // Return the number of bytes written
-            Ok(len)
-        }
-        // the data is contained in more than one slab, and may be larger than SLAB_SIZE bytes
-        else {
-            let mut bytes_written = 0;
-            // While we have some writting to do...
-            while bytes_written != len {
-                // How many bytes to we have to read this iteration? Either the rest of the data or the rest of a slab
-                let to_write = cmp::min(SLAB_SIZE - (self.cursor & SLAB_MASK) as usize, len - bytes_written);
-                // if cursor is a multiple of SLAB_SIZE then cursor & slab_mask will be 0
-
-                // Which slab to read from
-                let index;
-                // Combat the borrow-checker
-                let cursor = self.cursor;
-                // If our slab is already present, cool, if not, add it
-                match self.find_slab(cursor) {
-                    Some(x) => index = x,
-                    None =>
-                        match self.add_slab(cursor) {
-                            Ok(x) => index = x,
-                            Err(e) => return Err(e)
-                        }
-                };
-                // We're using the slab so increment the use count
-                self.dat[index].uses += 1;
-                self.dat[index].dirty = true;
-                {
-                    let masked = (self.cursor & SLAB_MASK) as usize;
-                    let mut slice = &mut self.dat[index].dat[masked as usize .. masked as usize + to_write];
-                    let target = &buf[bytes_written .. bytes_written + to_write];
-                    slice.clone_from_slice(target);
-                }
-                self.cursor += to_write as u64;
-                bytes_written += to_write;
-            }
-
-            Ok(len)
-        }
+        let cursor = self.cursor;
+        let len = {
+            let slab = self.fetch_slab(cursor)?;
+            slab.uses += 1;
+            slab.dirty = true;
+            let mut dat = &mut slab.dat[(cursor - slab.start) as usize..];
+            dat.write(buf)?
+        };
+        self.cursor += len as u64;
+        if self.end < self.cursor { self.end = self.cursor; }
+        Ok(len)
     }
 
     fn flush(&mut self) -> Result<(), Error> {
