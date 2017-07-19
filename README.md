@@ -17,9 +17,10 @@ in [src/lib.rs](https://github.com/jkarns275/BufFile-rs/blob/master/src/lib.rs):
 * write_and_read_16_mb_bufwrite_bufread ... bench:  43,212,873 ns/iter (+/- 25,221,377)
 * write_and_read_16_mb_file_buf         ... bench:  41,640,289 ns/iter (+/- 64,370,614)
 
-
-When used for random access files, the performance gain when compared with BufReader
-and BufWriter is even further exaggerated (it is cumbersome to use the two anyways).
+The performance gain in these examples can likely be contributed by the larger default cache
+size of BufFile, but when used for random access files, the performance gain when compared
+with BufReader and BufWriter is even further exaggerated, and not simply from a larger
+cache size (it is cumbersome to use the two anyways).
 
 # Example Usage
 This example is a bit obtuse but it demonstrates the relative speed of the BufFile
