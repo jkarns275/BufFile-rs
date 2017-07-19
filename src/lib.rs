@@ -85,10 +85,10 @@ mod bench {
                     .unwrap()
                 ).unwrap()
         };
-        let mut kb = vec![0u8; 1024*16];
+        let kb = vec![0u8; 1024*16];
         test_buffile.write(&kb).unwrap();
         {
-            test_buffile;
+            let _ = test_buffile;
         };
         b.iter(|| {
             let mut test_buffile = {
@@ -173,7 +173,7 @@ mod bench {
                     )
             };
             let kb = vec![0u8; 1024];
-            for i in 0..1024*16 {
+            for _ in 0..1024*16 {
                 test_buffile.write(&kb).unwrap();
             }
             let mut file = test_buffile.into_inner().unwrap();
@@ -194,8 +194,8 @@ mod tests {
     // It randomly seeks and writes data, and verifies everything is completely equal with the actual file.
     #[test]
     fn test_file_buffer() {
-        use std::fs::{ File, OpenOptions };
-        use std::io::{ Error, Seek, SeekFrom, Read, Write };
+        use std::fs::OpenOptions;
+        use std::io::{ Seek, SeekFrom, Read, Write };
         use file_buffer::*;
         use std::time::{ SystemTime };
         use rand::Rng;
@@ -211,7 +211,7 @@ mod tests {
         test_file.write(&[0]).unwrap();
         test_buffile.write(&[0]).unwrap();
 
-        for i in 0..100 {
+        for _ in 0..100 {
             for _ in 0..1000 {
                 let x = rng.gen::<u64>();
                 let a = test_file.seek(SeekFrom::End(0)).unwrap();
@@ -238,7 +238,7 @@ mod tests {
             }
             let _ = test_file.seek(SeekFrom::Start(0)).unwrap();
             let _ = test_buffile.seek(SeekFrom::Start(0)).unwrap();
-            for i in 0..a {
+            for _ in 0..a {
                 let mut b1 = [0u8];
                 let mut b2 = [0u8];
                 test_file.read(&mut b1).unwrap();
