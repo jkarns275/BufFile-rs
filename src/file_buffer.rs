@@ -135,7 +135,7 @@ impl<F: Write + Read + Seek> BufFile<F> {
     }
 
     fn fetch_slab(&mut self, mut loc: u64) -> Result<&mut Slab, Error> {
-        loc = loc & SLAB_MASK;
+        loc = loc & !SLAB_MASK;
         if let Some(x) = self.find_slab(loc) {
             Ok(&mut self.dat[x])
         } else {
