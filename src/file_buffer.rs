@@ -256,13 +256,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
         match pos {
             SeekFrom::Start(x) => {
-                if self.find_slab(x).is_none() {
-                    let cursor = self.cursor;
-                    match self.add_slab(cursor) {
-                        Ok(_) => {},
-                        Err(e) => return Err(e)
-                    }
-                }
+                let _ = self.fetch_slab(x)?;
                 self.cursor = x;
                 Ok(self.cursor)
             },
@@ -272,12 +266,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
                     else { self.end - x as u64 };           // weren't automatically extended beyond
                                                             // the end.
                 let cursor = self.cursor;
-                if self.find_slab(cursor).is_none() {
-                    match self.add_slab(cursor) {
-                        Ok(_) => {},
-                        Err(e) => return Err(e)
-                    }
-                }
+                let _ = self.fetch_slab(x as u64)?;
 
                 Ok(cursor)
             },
@@ -289,12 +278,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
                     else { cur - x as u64 };
                 self.cursor = cursor;
 
-                if self.find_slab(cursor).is_none() {
-                    match self.add_slab(cursor) {
-                        Ok(_) => {},
-                        Err(e) => return Err(e)
-                    }
-                }
+                let _ = self.fetch_slab(x as u64)?;
 
                 Ok(self.cursor)
             }
