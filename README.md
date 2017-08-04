@@ -8,14 +8,12 @@ rather than using the crate.
 # Performance
 Under the right conditions, BufFile can outperform BufReader and BufWriter, or
 a combination of BufReader and BufWriter. As shown by the very simple benchmarks
-in [src/lib.rs](https://github.com/jkarns275/BufFile-rs/blob/master/src/lib.rs):
+in [src/lib.rs](https://github.com/jkarns275/BufFile-rs/blob/master/src/lib.rs)
+(tests that end in buf_file use the BufFile, others use BufReader or BufWriter):
 
-* read_16_mb_buf_file                   ... bench:  23,615,268 ns/iter (+/- 4,529,611)
-* read_16_mb_bufreader                  ... bench:  37,478,706 ns/iter (+/- 1,144,427)
-* write_16_mb_buf_file                  ... bench:   5,270,937 ns/iter (+/- 828,063)
-* write_16_mb_buf_write                 ... bench:  27,740,703 ns/iter (+/- 26,047,984)
-* write_and_read_16_mb_bufwrite_bufread ... bench:  43,212,873 ns/iter (+/- 25,221,377)
-* write_and_read_16_mb_file_buf         ... bench:  41,640,289 ns/iter (+/- 64,370,614)
+![Performance](https://raw.githubusercontent.com/jkarns275/BufFile-rs/master/img/9e3c571bdb3d317a67b18a821a70f222.png)
+
+These benchmarks use version 0.2.8.
 
 The performance gain in these examples can likely be contributed by the larger default cache
 size of BufFile, but when used for random access files, the performance gain when compared
@@ -29,7 +27,7 @@ This example is a bit obtuse but it demonstrates the relative speed of the BufFi
 Cargo.toml
 ```toml
 [dependencies]
-buf_file = "0.1.1"
+buf_file = "0.2.8"
 ```
 
 some_file.rs
