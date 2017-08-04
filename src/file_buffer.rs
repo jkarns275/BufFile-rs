@@ -1,4 +1,4 @@
-use std::io::{ Error, Seek, SeekFrom, Write, Read };
+use std::io::{ ErrorKind, Error, Seek, SeekFrom, Write, Read };
 use std::collections::HashMap;
 
 /// Slab size MUST be a power of 2!
@@ -254,11 +254,12 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
 
 impl<F: Write + Read + Seek> Seek for BufFile<F> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
-        match pos {
+        let pos = pos.clone();
+        let new_pos = match pos {
             SeekFrom::Start(x) => {
                 let _ = self.fetch_slab(x)?;
                 self.cursor = x;
-                Ok(self.cursor)
+                self.cursor
             },
             SeekFrom::End(x) => {
                 self.cursor =
@@ -268,7 +269,7 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
                 let cursor = self.cursor;
                 let _ = self.fetch_slab(x as u64)?;
 
-                Ok(cursor)
+                cursor
             },
             SeekFrom::Current(x) => {
                 let cur = self.cursor;
@@ -280,8 +281,14 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
 
                 let _ = self.fetch_slab(x as u64)?;
 
-                Ok(self.cursor)
+                self.cursor
             }
+        };
+
+        if new_pos <= self.end {
+            Ok(new_pos)
+        } else {
+            Err(Error::new(ErrorKind::UnexpectedEof, "Attempted to seek beyond the end of the file"))
         }
     }
 }

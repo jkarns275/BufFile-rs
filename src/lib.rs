@@ -190,6 +190,39 @@ mod bench {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[should_panic]
+    fn test_seek_start_error() {
+        use std::io::{ Seek, SeekFrom };
+        use std::fs::OpenOptions;
+        use file_buffer::*;
+
+        let mut test_file = BufFile::new(OpenOptions::new().read(true).write(true).truncate(true).create(true).open("test112324").unwrap()).unwrap();
+        test_file.seek(SeekFrom::Start(1)).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_seek_end_error() {
+        use std::io::{ Seek, SeekFrom };
+        use std::fs::OpenOptions;
+        use file_buffer::*;
+
+        let mut test_file = BufFile::new(OpenOptions::new().read(true).write(true).truncate(true).create(true).open("test112324").unwrap()).unwrap();
+        test_file.seek(SeekFrom::End(1)).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_seek_current_error() {
+        use std::io::{ Seek, SeekFrom };
+        use std::fs::OpenOptions;
+        use file_buffer::*;
+
+        let mut test_file = BufFile::new(OpenOptions::new().read(true).write(true).truncate(true).create(true).open("test112324").unwrap()).unwrap();
+        test_file.seek(SeekFrom::Current(1)).unwrap();
+    }
+
     // This test verifies that the BufFile behaves exactly like a file when reading, writing, and seeking.
     // It randomly seeks and writes data, and verifies everything is completely equal with the actual file.
     #[test]
