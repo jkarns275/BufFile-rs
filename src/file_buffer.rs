@@ -1,4 +1,4 @@
-use std::io::{ Error, Seek, SeekFrom, Write, Read };
+use std::io::{ ErrorKind, Error, Seek, SeekFrom, Write, Read };
 use std::collections::HashMap;
 
 /// Slab size MUST be a power of 2!
@@ -254,17 +254,12 @@ impl<F: Write + Read + Seek> Write for BufFile<F> {
 
 impl<F: Write + Read + Seek> Seek for BufFile<F> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
-        match pos {
+        let pos = pos.clone();
+        let new_pos = match pos {
             SeekFrom::Start(x) => {
-                if self.find_slab(x).is_none() {
-                    let cursor = self.cursor;
-                    match self.add_slab(cursor) {
-                        Ok(_) => {},
-                        Err(e) => return Err(e)
-                    }
-                }
+                let _ = self.fetch_slab(x)?;
                 self.cursor = x;
-                Ok(self.cursor)
+                self.cursor
             },
             SeekFrom::End(x) => {
                 self.cursor =
@@ -272,14 +267,9 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
                     else { self.end - x as u64 };           // weren't automatically extended beyond
                                                             // the end.
                 let cursor = self.cursor;
-                if self.find_slab(cursor).is_none() {
-                    match self.add_slab(cursor) {
-                        Ok(_) => {},
-                        Err(e) => return Err(e)
-                    }
-                }
+                let _ = self.fetch_slab(x as u64)?;
 
-                Ok(cursor)
+                cursor
             },
             SeekFrom::Current(x) => {
                 let cur = self.cursor;
@@ -289,15 +279,16 @@ impl<F: Write + Read + Seek> Seek for BufFile<F> {
                     else { cur - x as u64 };
                 self.cursor = cursor;
 
-                if self.find_slab(cursor).is_none() {
-                    match self.add_slab(cursor) {
-                        Ok(_) => {},
-                        Err(e) => return Err(e)
-                    }
-                }
+                let _ = self.fetch_slab(x as u64)?;
 
-                Ok(self.cursor)
+                self.cursor
             }
+        };
+
+        if new_pos <= self.end {
+            Ok(new_pos)
+        } else {
+            Err(Error::new(ErrorKind::UnexpectedEof, "Attempted to seek beyond the end of the file"))
         }
     }
 }
