@@ -1,9 +1,10 @@
-extern crate rand;
 extern crate buf_file;
+extern crate rand;
+extern crate tempfile;
 
+use tempfile::tempfile;
 use std::io::prelude::*;
 use std::io::SeekFrom;
-use std::fs::OpenOptions;
 use std::time::SystemTime;
 
 use rand::{Rng, SeedableRng};
@@ -14,21 +15,21 @@ use buf_file::BufFile;
 #[test]
 #[should_panic]
 fn test_seek_start_error() {
-    let mut test_file = BufFile::new(OpenOptions::new().read(true).write(true).truncate(true).create(true).open("test112324").unwrap()).unwrap();
+    let mut test_file = BufFile::new(tempfile().unwrap()).unwrap();
     test_file.seek(SeekFrom::Start(1)).unwrap();
 }
 
 #[test]
 #[should_panic]
 fn test_seek_end_error() {
-    let mut test_file = BufFile::new(OpenOptions::new().read(true).write(true).truncate(true).create(true).open("test112324").unwrap()).unwrap();
+    let mut test_file = BufFile::new(tempfile().unwrap()).unwrap();
     test_file.seek(SeekFrom::End(1)).unwrap();
 }
 
 #[test]
 #[should_panic]
 fn test_seek_current_error() {
-    let mut test_file = BufFile::new(OpenOptions::new().read(true).write(true).truncate(true).create(true).open("test112324").unwrap()).unwrap();
+    let mut test_file = BufFile::new(tempfile().unwrap()).unwrap();
     test_file.seek(SeekFrom::Current(1)).unwrap();
 }
 
@@ -39,8 +40,8 @@ fn test_file_buffer() {
 
     let now = SystemTime::now();
 
-    let mut test_file = OpenOptions::new().read(true).write(true).truncate(true).create(true).open("yzyy").unwrap();
-    let t = OpenOptions::new().read(true).write(true).truncate(true).create(true).open("zyys").unwrap();
+    let mut test_file = tempfile().unwrap();
+    let t = tempfile().unwrap();
     let mut test_buffile = BufFile::new(t).unwrap();
 
     let mut rng = XorShiftRng::from_seed([0, 1, 377, 6712]);

@@ -2,26 +2,17 @@
 
 extern crate buf_file;
 extern crate test;
+extern crate tempfile;
 
 use buf_file::BufFile;
 use test::Bencher;
-use std::fs::*;
 use std::io::{ Seek, Write, Read, SeekFrom, BufWriter, BufReader };
+use tempfile::tempfile;
 
 #[bench]
 fn write_16_mb_buf_file(b: &mut Bencher) {
     b.iter(|| {
-        let mut test_buffile = {
-            BufFile::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .truncate(true)
-                    .create(true)
-                    .open("write_16_mb_buf_file")
-                    .unwrap()
-            ).unwrap()
-        };
+        let mut test_buffile = BufFile::new(tempfile().unwrap()).unwrap();
         let kb = vec![0u8; 1024];
         for _ in 0..1024*16 {
             test_buffile.write(&kb).unwrap();
@@ -32,34 +23,13 @@ fn write_16_mb_buf_file(b: &mut Bencher) {
 
 #[bench]
 fn read_16_mb_buf_file(b: &mut Bencher) {
-    let mut test_buffile = {
-        BufFile::new(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .truncate(true)
-                .create(true)
-                .open("read_16_mb_buf_file")
-                .unwrap()
-        ).unwrap()
-    };
+    let f = tempfile::NamedTempFile::new().unwrap();
+    let mut test_buffile = BufFile::new(f.reopen().unwrap()).unwrap();
     let kb = vec![0u8; 1024*16];
     test_buffile.write(&kb).unwrap();
-    {
-        let _ = test_buffile;
-    };
+    drop(test_buffile);
     b.iter(|| {
-        let mut test_buffile = {
-            BufFile::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .truncate(false)
-                    .create(true)
-                    .open("read_16_mb_buf_file")
-                    .unwrap()
-            ).unwrap()
-        };
+        let mut test_buffile = BufFile::new(f.reopen().unwrap()).unwrap();
         let mut kb = vec![0u8; 1024*1024*16];
         for i in 0..1024*16 {
             test_buffile.read(&mut kb[i * 1024 ..(i + 1) * 1024]).unwrap();
@@ -70,34 +40,13 @@ fn read_16_mb_buf_file(b: &mut Bencher) {
 
 #[bench]
 fn read_16_mb_bufreader(b: &mut Bencher) {
-    let mut test_buffile = {
-        BufFile::new(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .truncate(true)
-                .create(true)
-                .open("read_16_mb_bufreader")
-                .unwrap()
-        ).unwrap()
-    };
+    let f = tempfile::NamedTempFile::new().unwrap();
+    let mut test_buffile = BufFile::new(f.reopen().unwrap()).unwrap();
     let kb = vec![0u8; 1024*16];
     test_buffile.write(&kb).unwrap();
-    {
-        let _ = test_buffile;
-    };
+    drop(test_buffile);
     b.iter(|| {
-        let mut test_buffile = {
-            BufReader::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .truncate(false)
-                    .create(true)
-                    .open("read_16_mb_bufreader")
-                    .unwrap()
-            )
-        };
+        let mut test_buffile = BufReader::new(f.reopen().unwrap());
         let mut kb = vec![0u8; 1024*1024*16];
         for i in 0..1024*16 {
             test_buffile.read(&mut kb[i * 1024 ..(i + 1) * 1024]).unwrap();
@@ -109,18 +58,7 @@ fn read_16_mb_bufreader(b: &mut Bencher) {
 #[bench]
 fn write_16_mb_buf_write(b: &mut Bencher) {
     b.iter(|| {
-        use std::io::BufWriter;
-        let mut test_buffile = {
-            BufWriter::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .truncate(true)
-                    .create(true)
-                    .open("write_16_mb_buf_file")
-                    .unwrap()
-            )
-        };
+        let mut test_buffile = BufWriter::new(tempfile().unwrap());
         let kb = vec![0u8; 1024];
         for _ in 0..1024*16 {
             test_buffile.write(&kb).unwrap();
@@ -132,17 +70,7 @@ fn write_16_mb_buf_write(b: &mut Bencher) {
 #[bench]
 fn write_and_read_16_mb_file_buf(b: &mut Bencher) {
     b.iter(|| {
-        let mut test_buffile = {
-            BufFile::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .truncate(true)
-                    .create(true)
-                    .open("write_16_mb_file_buf")
-                    .unwrap()
-            ).unwrap()
-        };
+        let mut test_buffile = BufFile::new(tempfile().unwrap()).unwrap();
         let kb = vec![0u8; 1024];
         for _ in 0..1024*16 {
             test_buffile.write(&kb).unwrap();
@@ -160,17 +88,7 @@ fn write_and_read_16_mb_file_buf(b: &mut Bencher) {
 #[bench]
 fn write_and_read_16_mb_bufwrite_bufread(b: &mut Bencher) {
     b.iter(|| {
-        let mut test_buffile = {
-            BufWriter::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .truncate(true)
-                    .create(true)
-                    .open("write_16_mb_file_buf")
-                    .unwrap()
-            )
-        };
+        let mut test_buffile = BufWriter::new(tempfile().unwrap());
         let kb = vec![0u8; 1024];
         for _ in 0..1024*16 {
             test_buffile.write(&kb).unwrap();
