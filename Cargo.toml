@@ -6,3 +6,6 @@ description = "A Buffered File that allows for both reading and writing"
 license = "MIT"
 
 [dependencies]
+
+[dev-dependencies]
+rand = "0.3"
